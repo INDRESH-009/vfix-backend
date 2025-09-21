@@ -1,0 +1,8 @@
+/* simple container helpers */
+.container { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+.card { @apply rounded-xl border p-4 shadow-sm bg-white; }
+.btn { @apply rounded-lg px-4 py-2 font-medium border; }
+.btn-primary { @apply bg-black text-white border-black; }
+.input { @apply w-full rounded-lg border p-2; }
+.label { @apply text-sm font-medium text-gray-700; }
+.badge { @apply inline-flex items-center px-2 py-1 text-xs rounded-md bg-gray-100; }

@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from uuid import UUID
-import json
 from app.core.db import get_db
 from app.models.models import Issue, Media, ActionLog, User
 from app.routers.me import get_current_user
@@ -27,7 +26,7 @@ def issue_to_out(i: Issue) -> IssueOut:
         description=i.description,
         media=[
             {"id": m.id, "role": m.role, "url": m.url, "created_at": m.created_at}
-            for m in i.media
+            for m in sorted(i.media, key=lambda x: x.created_at or 0, reverse=False)
         ],
         created_at=i.created_at
     )
@@ -35,7 +34,9 @@ def issue_to_out(i: Issue) -> IssueOut:
 @router.post("")
 async def create_issue(
     json_str: str = Form(...),
-    photos: List[UploadFile] | None = None,
+    # Accept BOTH `photos` and `photos[]` field names
+    photos: Optional[List[UploadFile]] = File(None),
+    photos_brackets: Optional[List[UploadFile]] = File(None, alias="photos[]"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -43,8 +44,10 @@ async def create_issue(
         data = IssueCreateIn.model_validate_json(json_str)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON in 'json' field")
+
     if not data.consent:
         raise HTTPException(status_code=400, detail="Consent required")
+
     issue = Issue(
         reporter_id=user.id,
         title=data.title,
@@ -56,10 +59,19 @@ async def create_issue(
         address=data.address,
         public_visibility=data.public_visibility,
     )
-    db.add(issue); db.commit(); db.refresh(issue)
+    db.add(issue)
+    db.commit()
+    db.refresh(issue)
 
+    # merge both possible photo lists
+    all_photos: List[UploadFile] = []
     if photos:
-        for f in photos:
+        all_photos.extend(photos)
+    if photos_brackets:
+        all_photos.extend(photos_brackets)
+
+    if all_photos:
+        for f in all_photos:
             raw = await f.read()
             clean = strip_exif(raw)
             mime = get_mime_from_bytes(clean)
@@ -68,9 +80,15 @@ async def create_issue(
             m = Media(issue_id=issue.id, role="before", url=url, phash=phash, exif_json={})
             db.add(m)
 
-    db.add(ActionLog(issue_id=issue.id, actor_id=user.id, actor_role="citizen",
-                     type="created", payload={"category": data.category}))
+    db.add(ActionLog(
+        issue_id=issue.id,
+        actor_id=user.id,
+        actor_role="citizen",
+        type="created",
+        payload={"category": data.category}
+    ))
     db.commit()
+    db.refresh(issue)  # ensure media relationship is visible in response
 
     enqueue_triage(issue.id)
     enqueue_sla_compute(issue.id)

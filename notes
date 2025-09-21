@@ -1,0 +1,24 @@
+You need to connect to an existing database to create civicdb. The default database is usually postgres.
+
+Run this command to connect:
+psql -h localhost -p 5432 -U indreshmr -d postgres
+
+Once inside the psql prompt, create your database:
+CREATE DATABASE civicdb;
+
+If you also need the postgres user:
+CREATE ROLE postgres WITH SUPERUSER LOGIN PASSWORD 'postgres';
+
+Then exit and try connecting to civicdb as the postgres user:
+psql -h localhost -p 5432 -U postgres -d civicdb
+
+
+
+
+
+
+
+minio server ~/minio-data --console-address ":9001"
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir api
+rq worker -u redis://localhost:6379/0 triage notifications maintenance
+npm run dev
